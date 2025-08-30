@@ -6,6 +6,9 @@ A comprehensive Python service for parsing XBRL financial documents and providin
 
 - **XBRL Parsing**: Complete parsing of XBRL taxonomy files including schema, linkbases, and instance documents
 - **Financial Data Extraction**: Extract structured financial statements (Income Statement, Balance Sheet, Cash Flow)
+- **Comprehensive Financial Metrics**: Calculate 15+ standard financial ratios across 5 categories with trend analysis
+- **Custom Metrics Framework**: Define and calculate custom financial metrics with flexible formulas
+- **Advanced Analytics**: Funnel analysis, trend analysis, and drill-down capabilities
 - **MCP Integration**: Expose financial data through standardized MCP protocol for LLM agents
 - **Data Validation**: Comprehensive validation of financial calculations and data integrity
 - **Performance Optimized**: Caching and optimization for handling large XBRL files
@@ -82,9 +85,135 @@ cash_flow = service.get_cash_flow_statement()
 # Calculate financial ratios
 ratios = service.get_financial_ratios()
 
+# Calculate comprehensive metrics
+all_metrics = service.calculate_all_metrics()
+profitability_metrics = service.calculate_metrics_by_category('profitability')
+
+# Trend analysis
+trend_metrics = service.calculate_trend_metrics(
+    current_period="2023", 
+    previous_period="2022"
+)
+
+# Get metrics summary with data quality assessment
+metrics_summary = service.get_metrics_summary()
+
 # Search for specific financial data
 revenue_facts = service.search_facts("revenue")
 ```
+
+### Financial Metrics Calculator
+
+The service includes a comprehensive financial metrics calculator with support for standard ratios, custom metrics, and trend analysis:
+
+#### Standard Financial Metrics
+
+Calculate 15+ standard financial ratios across 5 categories:
+
+```python
+from xbrl_financial_service import FinancialService
+
+service = FinancialService(filing_data)
+
+# Calculate all metrics at once
+all_metrics = service.calculate_all_metrics()
+
+# Calculate by category
+profitability = service.calculate_metrics_by_category('profitability')
+liquidity = service.calculate_metrics_by_category('liquidity')
+leverage = service.calculate_metrics_by_category('leverage')
+efficiency = service.calculate_metrics_by_category('efficiency')
+market = service.calculate_metrics_by_category('market')
+
+# Calculate specific metric
+roe = service.calculate_metric('return_on_equity')
+print(f"ROE: {roe.value:.2f}% (Data Quality: {roe.data_quality})")
+```
+
+**Supported Metrics:**
+
+- **Profitability**: Gross Profit Margin, Operating Profit Margin, Net Profit Margin, ROA, ROE
+- **Liquidity**: Current Ratio, Quick Ratio, Cash Ratio
+- **Leverage**: Debt-to-Equity, Debt-to-Assets, Interest Coverage
+- **Efficiency**: Asset Turnover, Inventory Turnover, Receivables Turnover
+- **Market**: Earnings Per Share, Book Value Per Share
+
+#### Custom Metrics
+
+Define and calculate custom financial metrics:
+
+```python
+from xbrl_financial_service.analysis.metrics_calculator import MetricDefinition
+
+# Define a custom metric
+rd_intensity = MetricDefinition(
+    name="rd_intensity",
+    formula="R&D Expense / Revenue",
+    calculation_func=lambda data: data.get('rd_expense', 0) / data.get('revenue', 1),
+    category="efficiency",
+    unit="percent",
+    description="R&D spending as percentage of revenue",
+    required_concepts=['ResearchAndDevelopmentExpense', 'Revenue']
+)
+
+# Add to calculator
+service.add_custom_metric(rd_intensity)
+
+# Calculate custom metric
+result = service.calculate_metric('rd_intensity')
+```
+
+#### Trend Analysis
+
+Analyze financial metrics trends across multiple periods:
+
+```python
+# Compare current vs previous period
+trend_metrics = service.calculate_trend_metrics(
+    current_period="2023-12-31",
+    previous_period="2022-12-31"
+)
+
+for metric_name, trend in trend_metrics.items():
+    if trend.current_value and trend.previous_value:
+        print(f"{metric_name}: {trend.previous_value:.2f} → {trend.current_value:.2f} "
+              f"({trend.change_percent:+.1f}%) - {trend.trend_direction}")
+```
+
+#### Data Quality Assessment
+
+The calculator provides comprehensive data quality assessment:
+
+```python
+# Get metrics summary with quality assessment
+summary = service.get_metrics_summary()
+
+print("Data Quality Summary:")
+for quality_level, count in summary['data_quality'].items():
+    print(f"  {quality_level}: {count} metrics")
+
+# Check individual metric quality
+metric_result = service.calculate_metric('current_ratio')
+if metric_result.data_quality == 'good':
+    print(f"Current Ratio: {metric_result.value:.2f}")
+elif metric_result.missing_data:
+    print(f"Missing data for: {', '.join(metric_result.missing_data)}")
+```
+
+#### Demo Script
+
+Run the comprehensive metrics calculator demo:
+
+```bash
+python demo_metrics_calculator.py
+```
+
+This demonstrates:
+- All standard financial metrics calculation
+- Custom metric definition and calculation
+- Trend analysis with period comparison
+- Data quality assessment
+- Integration with financial service
 
 ### Command Line Interface
 
@@ -117,6 +246,8 @@ Available MCP tools:
 - `get_balance_sheet`: Retrieve balance sheet data  
 - `get_cash_flow`: Retrieve cash flow statement data
 - `calculate_ratios`: Calculate financial ratios
+- `calculate_all_metrics`: Calculate comprehensive financial metrics
+- `calculate_trend_metrics`: Perform trend analysis between periods
 - `search_financial_data`: Search for specific financial information
 - `get_company_info`: Get basic company information
 - `get_summary`: Get summary of loaded financial data
@@ -130,9 +261,13 @@ xbrl_financial_service/
 ├── models.py                # Data models
 ├── xbrl_parser.py          # XBRL parsing engine
 ├── financial_service.py    # Main financial service
-├── query_engine.py         # Query and filtering engine
-├── calculation_engine.py   # Financial calculations
+├── statement_builders.py   # Financial statement builders
 ├── mcp_server.py           # MCP server implementation
+├── analysis/               # Financial analysis modules
+│   ├── __init__.py
+│   ├── metrics_calculator.py  # Comprehensive metrics calculator
+│   ├── trend_analyzer.py      # Trend analysis engine
+│   └── funnel_analyzer.py     # Funnel analysis engine
 ├── database/               # Database layer
 │   ├── __init__.py
 │   ├── models.py          # Database models
@@ -154,10 +289,18 @@ pytest
 # Run with coverage
 pytest --cov=xbrl_financial_service
 
+# Run specific test files
+pytest tests/test_basic_functionality.py
+pytest tests/test_metrics_calculator.py
+pytest tests/test_statement_builders.py
+
 # Run specific test categories
 pytest -m unit
 pytest -m integration
 pytest -m performance
+
+# Run metrics calculator tests specifically
+pytest tests/test_metrics_calculator.py -v
 ```
 
 ### Code Quality
@@ -213,21 +356,57 @@ MIT License - see LICENSE file for details.
 ## Support
 
 For questions and support, please open an issue on GitHub.
-## Dem
-o
 
-Run the comprehensive demo to see all features:
+## Demo
+
+### Comprehensive Service Demo
+
+Run the main demo to see core features:
 
 ```bash
 python demo.py
 ```
 
-This will demonstrate:
+This demonstrates:
 - XBRL file parsing
 - Financial statement extraction
-- Ratio calculations
+- Basic ratio calculations
 - MCP server capabilities
 - CLI usage examples
+
+### Financial Metrics Calculator Demo
+
+Run the advanced metrics calculator demo:
+
+```bash
+python demo_metrics_calculator.py
+```
+
+This comprehensive demo showcases:
+- **15+ Standard Financial Metrics** across 5 categories
+- **Custom Metric Definition** and calculation
+- **Trend Analysis** with period-over-period comparison
+- **Data Quality Assessment** and missing data handling
+- **Integration** with existing financial service
+- **Real Financial Data** with proper XBRL decimal scaling
+
+Sample output:
+```
+PROFITABILITY METRICS
+========================================
+Measures the percentage of revenue retained after direct costs    44.00%
+Measures operating efficiency and pricing power                   10.00%
+Overall profitability after all expenses                          7.20%
+Return generated on shareholders' investment                      13.33%
+
+TREND ANALYSIS
+========================================
+Metric                    2022       2023       Change     Trend       
+----------------------------------------------------------------------
+net_profit_margin         6.67       7.20       +8.0%      ↗ improving
+return_on_assets          7.37       8.00       +8.6%      ↗ improving
+return_on_equity          12.73      13.33      +4.8%      → stable
+```
 
 ## Working with Apple's 10-K Files
 
@@ -276,14 +455,50 @@ income_stmt = service.get_income_statement()
 balance_sheet = service.get_balance_sheet()
 cash_flow = service.get_cash_flow_statement()
 
-# Calculate ratios
+# Calculate ratios (legacy method)
 ratios = service.get_financial_ratios()
+
+# Calculate comprehensive metrics
+all_metrics = service.calculate_all_metrics()
+specific_metric = service.calculate_metric('return_on_equity')
+category_metrics = service.calculate_metrics_by_category('profitability')
+
+# Trend analysis
+trends = service.calculate_trend_metrics('2023', '2022')
+
+# Metrics summary with data quality
+summary = service.get_metrics_summary()
+
+# Add custom metrics
+service.add_custom_metric(custom_metric_definition)
 
 # Search facts
 facts = service.search_facts("revenue", limit=10)
 
 # Get company info
 company = service.get_company_info()
+```
+
+### MetricsCalculator
+
+Direct access to the metrics calculation engine:
+
+```python
+from xbrl_financial_service.analysis.metrics_calculator import MetricsCalculator
+
+calculator = MetricsCalculator(filing_data)
+
+# Calculate all metrics
+results = calculator.calculate_all_metrics()
+
+# Get standard financial ratios format
+ratios = calculator.get_financial_ratios()
+
+# Add custom metrics
+calculator.add_custom_metric(metric_definition)
+
+# Get summary with data quality
+summary = calculator.get_metrics_summary()
 ```
 
 ### Data Models
@@ -296,6 +511,12 @@ Key data structures:
 - `FinancialRatios`: Calculated financial ratios
 - `CompanyInfo`: Basic company information
 
+**Metrics Calculator Models:**
+- `MetricResult`: Individual metric calculation result with data quality assessment
+- `MetricDefinition`: Custom metric definition with formula and metadata
+- `TrendMetric`: Metric with trend analysis (current vs previous period)
+- `MetricsCalculator`: Main calculator engine for comprehensive financial metrics
+
 ## Architecture
 
 The service is built with a layered architecture:
@@ -306,13 +527,28 @@ The service is built with a layered architecture:
 ├─────────────────┤
 │ Financial Service│  ← High-level financial operations
 ├─────────────────┤
-│  Query Engine   │  ← Data filtering and search
+│ Analysis Layer  │  ← Metrics, trends, and funnel analysis
+│  ├─ Metrics Calc│  ← Comprehensive financial metrics
+│  ├─ Trend Analyzer│ ← Multi-period trend analysis
+│  └─ Funnel Analyzer│← Conversion efficiency analysis
+├─────────────────┤
+│Statement Builders│  ← Financial statement construction
 ├─────────────────┤
 │  XBRL Parser    │  ← Parses XBRL files
 ├─────────────────┤
 │ Database Layer  │  ← SQLite storage and caching
 └─────────────────┘
 ```
+
+### Analysis Capabilities
+
+The analysis layer provides advanced financial analysis:
+
+- **MetricsCalculator**: 15+ standard ratios with custom metric support
+- **TrendAnalyzer**: Multi-period trend analysis with growth metrics
+- **FunnelAnalyzer**: Conversion efficiency analysis (profitability, cash, capital)
+- **Data Quality Assessment**: Comprehensive validation and missing data detection
+- **Flexible Framework**: Extensible for custom analysis requirements
 
 ## Supported XBRL Elements
 
