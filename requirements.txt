@@ -1,0 +1,34 @@
+# XBRL Financial Service Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core XML processing - Required for parsing XBRL files
+lxml>=4.9.0
+
+# Date and time handling - Required for financial periods
+python-dateutil>=2.8.0
+
+# Database ORM - Required for data storage and caching
+sqlalchemy>=2.0.0
+
+# Data validation and models - Required for data structures
+pydantic>=2.0.0
+
+# Type hints support - Required for Python < 3.9
+typing-extensions>=4.0.0
+
+# Performance optimizations (optional but recommended)
+ujson>=5.7.0
+
+# Testing dependencies (for development)
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+
+# Development tools (for code quality)
+black>=23.0.0
+isort>=5.12.0
+mypy>=1.0.0
+flake8>=6.0.0
+
+# Note: MCP protocol support will be added when official library is available
+# Currently using a simplified implementation in the codebase
