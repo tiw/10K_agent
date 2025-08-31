@@ -9,8 +9,9 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from datetime import date
 
-from ..models import FilingData, FinancialFact
+from ..models import FilingData, FinancialFact, PeriodType
 from ..utils.logging import get_logger
+from ..utils.context_mapper import ContextMapper
 
 logger = get_logger(__name__)
 
@@ -51,6 +52,7 @@ class FunnelAnalyzer:
     def __init__(self, filing_data: FilingData):
         self.filing_data = filing_data
         self.facts_by_concept = self._index_facts_by_concept()
+        self.context_mapper = ContextMapper(filing_data.all_facts)
     
     def _index_facts_by_concept(self) -> Dict[str, List[FinancialFact]]:
         """Index facts by concept for quick lookup"""
@@ -315,18 +317,86 @@ class FunnelAnalyzer:
         )
     
     def _get_latest_value(self, concept: str, period: Optional[str] = None) -> Optional[float]:
-        """Get the latest value for a financial concept"""
+        """Get the latest value for a financial concept with proper context filtering"""
         facts = self.facts_by_concept.get(concept, [])
         if not facts:
             return None
         
         # Filter by period if specified
         if period:
-            facts = [f for f in facts if period in f.period]
+            facts = self._filter_facts_by_period(facts, period)
         
-        # Get the most recent fact
+        # Get the most recent fact with proper context validation
         if facts:
-            latest_fact = max(facts, key=lambda f: f.period_end or date.min)
+            # For revenue-like concepts, prefer duration periods over instant
+            duration_facts = [f for f in facts if f.period_type == PeriodType.DURATION]
+            if duration_facts and any(keyword in concept.lower() for keyword in ['revenue', 'income', 'expense', 'cost']):
+                latest_fact = max(duration_facts, key=lambda f: f.period_end or date.min)
+            else:
+                latest_fact = max(facts, key=lambda f: f.period_end or date.min)
+            
+            if isinstance(latest_fact.value, (int, float)):
+                # Apply scaling if decimals are specified
+                if latest_fact.decimals is not None:
+                    return float(latest_fact.value) * (10 ** latest_fact.decimals)
+                return float(latest_fact.value)
+        
+        return None
+    
+    def _filter_facts_by_period(self, facts: List[FinancialFact], period_filter: str) -> List[FinancialFact]:
+        """Filter facts by period with proper context matching"""
+        filtered_facts = []
+        
+        for fact in facts:
+            # Check if this fact matches the period filter
+            if self._matches_period_filter(fact, period_filter):
+                filtered_facts.append(fact)
+        
+        return filtered_facts
+    
+    def _matches_period_filter(self, fact: FinancialFact, period_filter: str) -> bool:
+        """Check if a fact matches the period filter with context validation"""
+        # If period_filter is a year (e.g., "2024"), match fiscal year ending in that year
+        if period_filter.isdigit() and len(period_filter) == 4:
+            target_year = int(period_filter)
+            if fact.period_end:
+                return fact.period_end.year == target_year
+        
+        # If period_filter is a date range, check if it matches
+        if '_to_' in period_filter:
+            return period_filter in fact.period
+        
+        # If period_filter is a specific date, check period_end
+        try:
+            from datetime import datetime
+            target_date = datetime.strptime(period_filter, '%Y-%m-%d').date()
+            return fact.period_end == target_date
+        except ValueError:
+            pass
+        
+        # Fallback to simple string matching
+        return period_filter in fact.period
+    
+    def get_value_for_fiscal_year(self, concept: str, fiscal_year: int, 
+                                 period_type: Optional[PeriodType] = None) -> Optional[float]:
+        """Get value for a specific fiscal year with proper context validation"""
+        facts = self.facts_by_concept.get(concept, [])
+        if not facts:
+            return None
+        
+        # Filter by fiscal year and period type
+        matching_facts = []
+        for fact in facts:
+            # Check fiscal year
+            if fact.period_end and fact.period_end.year == fiscal_year:
+                # Check period type if specified
+                if period_type is None or fact.period_type == period_type:
+                    matching_facts.append(fact)
+        
+        if matching_facts:
+            # For multiple matches, prefer the one with the latest period_end in that fiscal year
+            latest_fact = max(matching_facts, key=lambda f: f.period_end or date.min)
+            
             if isinstance(latest_fact.value, (int, float)):
                 # Apply scaling if decimals are specified
                 if latest_fact.decimals is not None:
@@ -416,4 +486,162 @@ class FunnelAnalyzer:
             if payout_ratio:
                 insights.append(f"资本分配比率 {payout_ratio:.1%}，{'积极回报股东' if payout_ratio > 0.5 else '保守分配策略' if payout_ratio > 0.2 else '重投资策略'}")
         
-        return insights
+        return insights   
+ 
+    def get_value_by_context_id(self, concept: str, context_id: str) -> Optional[float]:
+        """Get value for a concept from a specific context ID"""
+        context_facts = self.context_mapper.get_facts_by_context_id(context_id)
+        
+        for fact in context_facts:
+            if (concept.lower() in fact.concept.lower() or 
+                fact.concept.lower().endswith(concept.lower())):
+                if isinstance(fact.value, (int, float)):
+                    # Apply scaling
+                    value = float(fact.value)
+                    if fact.decimals is not None:
+                        value *= (10 ** fact.decimals)
+                    return value
+        
+        return None
+    
+    def get_value_for_fiscal_year_by_context(self, concept: str, fiscal_year: int, 
+                                           prefer_duration: bool = True) -> Optional[float]:
+        """Get value for a concept using the correct context for the fiscal year"""
+        return self.context_mapper.get_concept_value_for_year(concept, fiscal_year, prefer_duration)
+    
+    def get_profitability_funnel_by_year(self, fiscal_year: int) -> FinancialFunnel:
+        """
+        Create profitability funnel for a specific fiscal year using correct context IDs
+        """
+        logger.info(f"Building profitability funnel for fiscal year {fiscal_year}")
+        
+        # Get the revenue context for this fiscal year
+        revenue_context = self.context_mapper.get_revenue_context_for_year(fiscal_year)
+        if not revenue_context:
+            logger.warning(f"No revenue context found for fiscal year {fiscal_year}")
+            return self._create_empty_funnel("profitability", str(fiscal_year))
+        
+        logger.info(f"Using revenue context {revenue_context} for fiscal year {fiscal_year}")
+        
+        # Get key financial metrics using context-aware methods
+        revenue = self.get_value_for_fiscal_year_by_context('RevenueFromContractWithCustomerExcludingAssessedTax', fiscal_year)
+        cost_of_sales = self.get_value_for_fiscal_year_by_context('CostOfGoodsAndServicesSold', fiscal_year)
+        gross_profit = revenue - cost_of_sales if revenue and cost_of_sales else None
+        
+        operating_income = self.get_value_for_fiscal_year_by_context('OperatingIncomeLoss', fiscal_year)
+        net_income = self.get_value_for_fiscal_year_by_context('NetIncomeLoss', fiscal_year)
+        
+        # Build funnel levels
+        levels = []
+        
+        if revenue:
+            revenue_level = FunnelLevel(
+                name=f"营业收入 (Revenue) - FY{fiscal_year}",
+                value=revenue,
+                unit="USD",
+                period=f"FY{fiscal_year}"
+            )
+            levels.append(revenue_level)
+            
+            # Add revenue breakdown if available
+            product_revenue = self.get_value_for_fiscal_year_by_context('ProductSales', fiscal_year)
+            service_revenue = self.get_value_for_fiscal_year_by_context('ServiceSales', fiscal_year)
+            if product_revenue or service_revenue:
+                if product_revenue:
+                    revenue_level.children.append(FunnelLevel(
+                        name="产品收入",
+                        value=product_revenue,
+                        unit="USD",
+                        period=f"FY{fiscal_year}",
+                        conversion_rate=product_revenue / revenue * 100
+                    ))
+                if service_revenue:
+                    revenue_level.children.append(FunnelLevel(
+                        name="服务收入", 
+                        value=service_revenue,
+                        unit="USD",
+                        period=f"FY{fiscal_year}",
+                        conversion_rate=service_revenue / revenue * 100
+                    ))
+        
+        if gross_profit and revenue:
+            gross_margin = gross_profit / revenue
+            levels.append(FunnelLevel(
+                name="毛利润 (Gross Profit)",
+                value=gross_profit,
+                unit="USD", 
+                period=f"FY{fiscal_year}",
+                conversion_rate=gross_margin * 100,
+                efficiency_ratio=gross_margin
+            ))
+        
+        if operating_income and revenue:
+            operating_margin = operating_income / revenue
+            levels.append(FunnelLevel(
+                name="营业利润 (Operating Income)",
+                value=operating_income,
+                unit="USD",
+                period=f"FY{fiscal_year}", 
+                conversion_rate=operating_margin * 100,
+                efficiency_ratio=operating_margin
+            ))
+            
+            # Add operating expense breakdown
+            rd_expense = self.get_value_for_fiscal_year_by_context('ResearchAndDevelopmentExpense', fiscal_year)
+            sga_expense = self.get_value_for_fiscal_year_by_context('SellingGeneralAndAdministrativeExpense', fiscal_year)
+            
+            operating_level = levels[-1]
+            if rd_expense:
+                operating_level.children.append(FunnelLevel(
+                    name="研发费用",
+                    value=-rd_expense,  # Negative as it's an expense
+                    unit="USD",
+                    period=f"FY{fiscal_year}",
+                    conversion_rate=rd_expense / revenue * 100
+                ))
+            if sga_expense:
+                operating_level.children.append(FunnelLevel(
+                    name="销售管理费用",
+                    value=-sga_expense,
+                    unit="USD", 
+                    period=f"FY{fiscal_year}",
+                    conversion_rate=sga_expense / revenue * 100
+                ))
+        
+        if net_income and revenue:
+            net_margin = net_income / revenue
+            levels.append(FunnelLevel(
+                name="净利润 (Net Income)",
+                value=net_income,
+                unit="USD",
+                period=f"FY{fiscal_year}",
+                conversion_rate=net_margin * 100,
+                efficiency_ratio=net_margin
+            ))
+        
+        # Calculate total conversion rate
+        total_conversion = net_income / revenue * 100 if net_income and revenue else 0
+        
+        # Generate insights
+        insights = self._generate_profitability_insights(levels)
+        insights.append(f"数据来源: Context {revenue_context} (FY{fiscal_year})")
+        
+        return FinancialFunnel(
+            company_name=self.filing_data.company_info.name,
+            period=f"FY{fiscal_year}",
+            funnel_type="profitability",
+            levels=levels,
+            total_conversion_rate=total_conversion,
+            key_insights=insights
+        )
+    
+    def _create_empty_funnel(self, funnel_type: str, period: str) -> FinancialFunnel:
+        """Create empty funnel when no data is available"""
+        return FinancialFunnel(
+            company_name=self.filing_data.company_info.name if self.filing_data.company_info else "Unknown",
+            period=period,
+            funnel_type=funnel_type,
+            levels=[],
+            total_conversion_rate=0.0,
+            key_insights=["无可用数据"]
+        )

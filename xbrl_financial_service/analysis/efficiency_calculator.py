@@ -12,6 +12,7 @@ import statistics
 
 from ..models import FilingData, FinancialFact
 from ..utils.logging import get_logger
+from ..utils.context_mapper import ContextMapper
 
 logger = get_logger(__name__)
 
@@ -124,6 +125,7 @@ class EfficiencyCalculator:
     def __init__(self, filing_data: FilingData):
         self.filing_data = filing_data
         self.facts_by_concept = self._index_facts_by_concept()
+        self.context_mapper = ContextMapper(filing_data.all_facts)
         
         # Benchmark values for performance rating
         self.benchmarks = self._load_industry_benchmarks()
@@ -402,7 +404,15 @@ class EfficiencyCalculator:
         }
     
     def _get_latest_value(self, concept: str, period: Optional[str] = None) -> Optional[float]:
-        """Get the latest value for a financial concept"""
+        """Get the latest value for a financial concept using Context ID mapping"""
+        # If period is specified as a fiscal year, use context mapper
+        if period and period.isdigit():
+            fiscal_year = int(period)
+            # Determine if this is a revenue/income statement concept or balance sheet concept
+            prefer_duration = any(term in concept.lower() for term in ['revenue', 'income', 'expense', 'cost', 'sales', 'cash'])
+            return self.context_mapper.get_concept_value_for_year(concept, fiscal_year, prefer_duration)
+        
+        # Fallback to original method for backward compatibility
         facts = self.facts_by_concept.get(concept, [])
         if not facts:
             return None
@@ -422,6 +432,11 @@ class EfficiencyCalculator:
                 return value
         
         return None
+    
+    def get_value_for_fiscal_year(self, concept: str, fiscal_year: int) -> Optional[float]:
+        """Get value for a concept using Context ID mapping for a specific fiscal year"""
+        prefer_duration = any(term in concept.lower() for term in ['revenue', 'income', 'expense', 'cost', 'sales', 'cash'])
+        return self.context_mapper.get_concept_value_for_year(concept, fiscal_year, prefer_duration)
     
     def _calculate_ebitda(self, period: Optional[str] = None) -> Optional[float]:
         """Calculate EBITDA (Earnings Before Interest, Taxes, Depreciation, and Amortization)"""
@@ -749,4 +764,263 @@ class EfficiencyCalculator:
         if capital.roe:
             summary.append(f"股东权益回报率{capital.roe.value:.1f}%，股东价值创造{'优秀' if capital.roe.value > 20 else '良好' if capital.roe.value > 15 else '一般'}")
         
-        return summary
+        return summary 
+   
+    def calculate_conversion_rates_by_year(self, fiscal_year: int) -> ConversionAnalysis:
+        """
+        Calculate conversion rates for a specific fiscal year using Context ID mapping
+        """
+        logger.info(f"Calculating conversion rates for FY{fiscal_year}")
+        
+        # Get key financial metrics using context mapping
+        revenue = self.get_value_for_fiscal_year('RevenueFromContractWithCustomerExcludingAssessedTax', fiscal_year)
+        operating_income = self.get_value_for_fiscal_year('OperatingIncomeLoss', fiscal_year)
+        net_income = self.get_value_for_fiscal_year('NetIncomeLoss', fiscal_year)
+        operating_cash_flow = self.get_value_for_fiscal_year('NetCashProvidedByUsedInOperatingActivities', fiscal_year)
+        capex = self.get_value_for_fiscal_year('PaymentsToAcquirePropertyPlantAndEquipment', fiscal_year)
+        
+        free_cash_flow = operating_cash_flow - capex if operating_cash_flow and capex else None
+        
+        # Build conversion stages
+        stages = []
+        if revenue:
+            stages.append(("Revenue", revenue, 100.0))
+            
+            if operating_income:
+                conversion_rate = (operating_income / revenue) * 100
+                stages.append(("Operating Income", operating_income, conversion_rate))
+                
+                if net_income:
+                    conversion_rate = (net_income / revenue) * 100
+                    stages.append(("Net Income", net_income, conversion_rate))
+                    
+                    if operating_cash_flow:
+                        conversion_rate = (operating_cash_flow / revenue) * 100
+                        stages.append(("Operating Cash Flow", operating_cash_flow, conversion_rate))
+                        
+                        if free_cash_flow:
+                            conversion_rate = (free_cash_flow / revenue) * 100
+                            stages.append(("Free Cash Flow", free_cash_flow, conversion_rate))
+        
+        # Calculate overall metrics
+        total_conversion_rate = (free_cash_flow / revenue * 100) if revenue and free_cash_flow else 0
+        efficiency_score = min(100, max(0, total_conversion_rate * 4))  # Scale to 0-100
+        
+        # Identify bottlenecks and opportunities
+        bottlenecks = []
+        opportunities = []
+        
+        if len(stages) >= 2:
+            for i in range(1, len(stages)):
+                stage_name, _, conversion_rate = stages[i]
+                if conversion_rate < 20:
+                    bottlenecks.append(f"{stage_name}转换率偏低 ({conversion_rate:.1f}%)")
+                elif conversion_rate > 30:
+                    opportunities.append(f"{stage_name}表现优秀 ({conversion_rate:.1f}%)")
+        
+        return ConversionAnalysis(
+            funnel_name=f"Business Conversion Funnel FY{fiscal_year}",
+            period=f"FY{fiscal_year}",
+            stages=stages,
+            total_conversion_rate=total_conversion_rate,
+            efficiency_score=efficiency_score,
+            bottlenecks=bottlenecks,
+            improvement_opportunities=opportunities
+        )
+    
+    def calculate_margin_analysis_by_year(self, fiscal_year: int) -> MarginAnalysis:
+        """
+        Calculate comprehensive margin analysis for a specific fiscal year
+        """
+        logger.info(f"Calculating margin analysis for FY{fiscal_year}")
+        
+        # Get financial data using context mapping
+        revenue = self.get_value_for_fiscal_year('RevenueFromContractWithCustomerExcludingAssessedTax', fiscal_year)
+        cost_of_sales = self.get_value_for_fiscal_year('CostOfGoodsAndServicesSold', fiscal_year)
+        operating_income = self.get_value_for_fiscal_year('OperatingIncomeLoss', fiscal_year)
+        net_income = self.get_value_for_fiscal_year('NetIncomeLoss', fiscal_year)
+        
+        ebitda = self._calculate_ebitda_by_year(fiscal_year)
+        operating_cash_flow = self.get_value_for_fiscal_year('NetCashProvidedByUsedInOperatingActivities', fiscal_year)
+        
+        analysis = MarginAnalysis(period=f"FY{fiscal_year}")
+        
+        if revenue:
+            # Gross margin
+            if cost_of_sales:
+                gross_profit = revenue - cost_of_sales
+                gross_margin_pct = (gross_profit / revenue) * 100
+                analysis.gross_margin = EfficiencyMetric(
+                    name="Gross Margin",
+                    value=gross_margin_pct,
+                    unit="%",
+                    period=f"FY{fiscal_year}",
+                    benchmark_value=self.benchmarks.get('gross_margin'),
+                    performance_rating=self._rate_performance(gross_margin_pct, self.benchmarks.get('gross_margin', 0)),
+                    description="Revenue minus cost of sales as percentage of revenue"
+                )
+            
+            # Operating margin
+            if operating_income:
+                operating_margin_pct = (operating_income / revenue) * 100
+                analysis.operating_margin = EfficiencyMetric(
+                    name="Operating Margin",
+                    value=operating_margin_pct,
+                    unit="%",
+                    period=f"FY{fiscal_year}",
+                    benchmark_value=self.benchmarks.get('operating_margin'),
+                    performance_rating=self._rate_performance(operating_margin_pct, self.benchmarks.get('operating_margin', 0)),
+                    description="Operating income as percentage of revenue"
+                )
+            
+            # Net margin
+            if net_income:
+                net_margin_pct = (net_income / revenue) * 100
+                analysis.net_margin = EfficiencyMetric(
+                    name="Net Margin",
+                    value=net_margin_pct,
+                    unit="%",
+                    period=f"FY{fiscal_year}",
+                    benchmark_value=self.benchmarks.get('net_margin'),
+                    performance_rating=self._rate_performance(net_margin_pct, self.benchmarks.get('net_margin', 0)),
+                    description="Net income as percentage of revenue"
+                )
+            
+            # EBITDA margin
+            if ebitda:
+                ebitda_margin_pct = (ebitda / revenue) * 100
+                analysis.ebitda_margin = EfficiencyMetric(
+                    name="EBITDA Margin",
+                    value=ebitda_margin_pct,
+                    unit="%",
+                    period=f"FY{fiscal_year}",
+                    description="EBITDA as percentage of revenue"
+                )
+            
+            # Cash margin
+            if operating_cash_flow:
+                cash_margin_pct = (operating_cash_flow / revenue) * 100
+                analysis.cash_margin = EfficiencyMetric(
+                    name="Cash Margin",
+                    value=cash_margin_pct,
+                    unit="%",
+                    period=f"FY{fiscal_year}",
+                    benchmark_value=self.benchmarks.get('cash_conversion_rate'),
+                    performance_rating=self._rate_performance(cash_margin_pct, self.benchmarks.get('cash_conversion_rate', 0)),
+                    description="Operating cash flow as percentage of revenue"
+                )
+        
+        # Generate insights
+        analysis.key_insights = self._generate_margin_insights(analysis)
+        analysis.key_insights.append(f"数据来源: FY{fiscal_year} Context ID映射")
+        
+        return analysis
+    
+    def calculate_capital_efficiency_by_year(self, fiscal_year: int) -> CapitalEfficiencyAnalysis:
+        """
+        Calculate capital efficiency analysis for a specific fiscal year
+        """
+        logger.info(f"Calculating capital efficiency for FY{fiscal_year}")
+        
+        # Get financial data using context mapping
+        net_income = self.get_value_for_fiscal_year('NetIncomeLoss', fiscal_year)
+        # Balance sheet items use instant context
+        total_assets = self.context_mapper.get_concept_value_for_year('Assets', fiscal_year, prefer_duration=False)
+        shareholders_equity = self.context_mapper.get_concept_value_for_year('StockholdersEquity', fiscal_year, prefer_duration=False)
+        revenue = self.get_value_for_fiscal_year('RevenueFromContractWithCustomerExcludingAssessedTax', fiscal_year)
+        inventory = self.context_mapper.get_concept_value_for_year('InventoryNet', fiscal_year, prefer_duration=False)
+        receivables = self.context_mapper.get_concept_value_for_year('AccountsReceivableNetCurrent', fiscal_year, prefer_duration=False)
+        cost_of_sales = self.get_value_for_fiscal_year('CostOfGoodsAndServicesSold', fiscal_year)
+        
+        analysis = CapitalEfficiencyAnalysis(period=f"FY{fiscal_year}")
+        
+        # ROE (Return on Equity)
+        if net_income and shareholders_equity and shareholders_equity != 0:
+            roe_pct = (net_income / shareholders_equity) * 100
+            analysis.roe = EfficiencyMetric(
+                name="Return on Equity",
+                value=roe_pct,
+                unit="%",
+                period=f"FY{fiscal_year}",
+                benchmark_value=self.benchmarks.get('roe'),
+                performance_rating=self._rate_performance(roe_pct, self.benchmarks.get('roe', 0)),
+                description="Net income as percentage of shareholders' equity"
+            )
+        
+        # ROA (Return on Assets)
+        if net_income and total_assets and total_assets != 0:
+            roa_pct = (net_income / total_assets) * 100
+            analysis.roa = EfficiencyMetric(
+                name="Return on Assets",
+                value=roa_pct,
+                unit="%",
+                period=f"FY{fiscal_year}",
+                benchmark_value=self.benchmarks.get('roa'),
+                performance_rating=self._rate_performance(roa_pct, self.benchmarks.get('roa', 0)),
+                description="Net income as percentage of total assets"
+            )
+        
+        # Asset Turnover
+        if revenue and total_assets and total_assets != 0:
+            asset_turnover_ratio = revenue / total_assets
+            analysis.asset_turnover = EfficiencyMetric(
+                name="Asset Turnover",
+                value=asset_turnover_ratio,
+                unit="x",
+                period=f"FY{fiscal_year}",
+                benchmark_value=self.benchmarks.get('asset_turnover'),
+                performance_rating=self._rate_performance(asset_turnover_ratio, self.benchmarks.get('asset_turnover', 0)),
+                description="Revenue divided by total assets"
+            )
+        
+        # Inventory Turnover
+        if cost_of_sales and inventory and inventory != 0:
+            inventory_turnover_ratio = cost_of_sales / inventory
+            analysis.inventory_turnover = EfficiencyMetric(
+                name="Inventory Turnover",
+                value=inventory_turnover_ratio,
+                unit="x",
+                period=f"FY{fiscal_year}",
+                description="Cost of sales divided by inventory"
+            )
+        
+        # Receivables Turnover
+        if revenue and receivables and receivables != 0:
+            receivables_turnover_ratio = revenue / receivables
+            analysis.receivables_turnover = EfficiencyMetric(
+                name="Receivables Turnover",
+                value=receivables_turnover_ratio,
+                unit="x",
+                period=f"FY{fiscal_year}",
+                description="Revenue divided by accounts receivable"
+            )
+        
+        # Calculate overall capital efficiency score
+        scores = []
+        if analysis.roe and analysis.roe.value:
+            scores.append(min(100, analysis.roe.value * 5))  # Scale ROE
+        if analysis.roa and analysis.roa.value:
+            scores.append(min(100, analysis.roa.value * 8))  # Scale ROA
+        if analysis.asset_turnover and analysis.asset_turnover.value:
+            scores.append(min(100, analysis.asset_turnover.value * 100))  # Scale asset turnover
+        
+        analysis.capital_efficiency_score = statistics.mean(scores) if scores else 0
+        
+        # Generate insights
+        analysis.key_insights = self._generate_capital_efficiency_insights(analysis)
+        analysis.key_insights.append(f"数据来源: FY{fiscal_year} Context ID映射")
+        
+        return analysis
+    
+    def _calculate_ebitda_by_year(self, fiscal_year: int) -> Optional[float]:
+        """Calculate EBITDA for a specific fiscal year"""
+        operating_income = self.get_value_for_fiscal_year('OperatingIncomeLoss', fiscal_year)
+        depreciation = self.get_value_for_fiscal_year('DepreciationDepletionAndAmortization', fiscal_year)
+        
+        if operating_income:
+            ebitda = operating_income
+            if depreciation:
+                ebitda += depreciation
+            return ebitda
+        
+        return None

@@ -1,0 +1,538 @@
+{
+  "company_overview": {
+    "company_name": "Apple Inc.",
+    "cik": "320193",
+    "fiscal_year": 2024,
+    "period_end": "2024-09-28",
+    "total_facts": 1120,
+    "fiscal_years_available": [
+      2016,
+      2021,
+      2022,
+      2023,
+      2024
+    ],
+    "context_summary": {
+      "revenue_context": "c-1",
+      "balance_sheet_context": "c-21"
+    }
+  },
+  "financial_performance": {
+    "revenue": {
+      "2024": 391035.0,
+      "2023": 383285.0,
+      "2022": 394328.0,
+      "yoy_growth": 2.021994077514121,
+      "cagr_3y": -0.4184211808589633
+    },
+    "profitability": {
+      "operating_income": 123216.0,
+      "net_income": 93736.0,
+      "operating_margin": 31.510222870075566,
+      "net_margin": 23.971255769943866
+    }
+  },
+  "profitability_funnel": {
+    "company_name": "Apple Inc.",
+    "period": "FY2024",
+    "total_conversion_rate": 23.971255769943866,
+    "levels": [
+      {
+        "name": "营业收入 (Revenue) - FY2024",
+        "value": 391035.0,
+        "unit": "USD",
+        "conversion_rate": null,
+        "efficiency_ratio": null,
+        "children": []
+      },
+      {
+        "name": "毛利润 (Gross Profit)",
+        "value": 180683.0,
+        "unit": "USD",
+        "conversion_rate": 46.206349815233935,
+        "efficiency_ratio": 0.4620634981523393,
+        "children": []
+      },
+      {
+        "name": "营业利润 (Operating Income)",
+        "value": 123216.0,
+        "unit": "USD",
+        "conversion_rate": 31.510222870075566,
+        "efficiency_ratio": 0.31510222870075566,
+        "children": [
+          {
+            "name": "研发费用",
+            "value": -31370.0,
+            "conversion_rate": 8.022299794136075
+          },
+          {
+            "name": "销售管理费用",
+            "value": -26097.0,
+            "conversion_rate": 6.673827151022286
+          }
+        ]
+      },
+      {
+        "name": "净利润 (Net Income)",
+        "value": 93736.0,
+        "unit": "USD",
+        "conversion_rate": 23.971255769943866,
+        "efficiency_ratio": 0.23971255769943867,
+        "children": []
+      }
+    ],
+    "key_insights": [
+      "毛利率 46.2% 表现优秀，显示强定价能力",
+      "营业利润率 31.5% 优秀，运营效率高",
+      "净利润率 24.0%，整体盈利能力强",
+      "数据来源: Context c-1 (FY2024)"
+    ]
+  },
+  "trends": {
+    "company_name": "Apple Inc.",
+    "analysis_period": "3 periods",
+    "overall_growth_score": 48.24721943131883,
+    "growth_quality_score": 50,
+    "executive_summary": [
+      "营收复合增长率-0.4%，增长放缓",
+      "利润复合增长率-3.1%，盈利增长滞后"
+    ],
+    "revenue_trend": {
+      "metric_name": "营业收入趋势",
+      "total_growth_rate": -0.8350915988720051,
+      "cagr": -0.4184211808589633,
+      "average_growth_rate": -0.3892332264029077,
+      "trend_direction": "stable",
+      "volatility": 3.409990355163775,
+      "data_points": [
+        {
+          "period": "2021-09-26_to_2022-09-24",
+          "value": 394328.0
+        },
+        {
+          "period": "2022-09-25_to_2023-09-30",
+          "value": 383285.0
+        },
+        {
+          "period": "2023-10-01_to_2024-09-28",
+          "value": 391035.0
+        }
+      ],
+      "insights": [
+        "营业收入趋势总体下降0.8%，需要关注",
+        "复合年增长率-0.4%，呈下降趋势",
+        "增长波动性较低(3.4%)，业绩稳定"
+      ]
+    },
+    "profit_trend": {
+      "metric_name": "净利润趋势",
+      "total_growth_rate": -6.078975581896335,
+      "cagr": -3.087139956503371,
+      "average_growth_rate": -3.086754843843237,
+      "trend_direction": "stable",
+      "volatility": 0.38638034881661765,
+      "insights": [
+        "净利润趋势总体下降6.1%，需要关注",
+        "复合年增长率-3.1%，呈下降趋势",
+        "增长波动性较低(0.4%)，业绩稳定"
+      ]
+    },
+    "margin_trends": {
+      "gross_margin": {
+        "metric_name": "毛利率趋势",
+        "cagr": -3.1852766666778387,
+        "trend_direction": "stable",
+        "insights": [
+          "毛利率趋势总体下降6.3%，需要关注",
+          "复合年增长率-3.2%，呈下降趋势",
+          "增长波动性较低(1.9%)，业绩稳定"
+        ]
+      },
+      "operating_margin": {
+        "metric_name": "营业利润率趋势",
+        "cagr": -1.9573824281957308,
+        "trend_direction": "stable",
+        "insights": [
+          "营业利润率趋势总体下降3.9%，需要关注",
+          "复合年增长率-2.0%，呈下降趋势",
+          "增长波动性较低(4.9%)，业绩稳定"
+        ]
+      },
+      "net_margin": {
+        "metric_name": "净利润率趋势",
+        "cagr": 2.7537302835213273,
+        "trend_direction": "stable",
+        "insights": [
+          "净利润率趋势总体增长5.6%，保持正增长",
+          "复合年增长率2.8%，温和增长",
+          "增长波动性较低(3.9%)，业绩稳定"
+        ]
+      }
+    }
+  },
+  "business_segments": {
+    "revenue_breakdown": {
+      "total_value": 391035.0,
+      "concentration_ratio": 0,
+      "diversity_score": 0.0,
+      "items": [],
+      "key_insights": [
+        "收入来源较为分散，前三大来源占0.0%",
+        "收入来源集中度较高，建议增加收入来源多样性",
+        "数据来源: FY2024 Context ID映射"
+      ]
+    },
+    "expense_breakdown": {
+      "total_value": 57467.0,
+      "concentration_ratio": 227.80900342805435,
+      "items": [
+        {
+          "name": "折旧摊销",
+          "value": 73448.0,
+          "percentage": 127.80900342805437
+        },
+        {
+          "name": "研发费用",
+          "value": 31370.0,
+          "percentage": 54.58785041850105
+        },
+        {
+          "name": "销售管理费用",
+          "value": 26097.0,
+          "percentage": 45.412149581498944
+        }
+      ],
+      "key_insights": [
+        "最大费用项目是折旧摊销，占总费用的127.8%",
+        "研发投入占费用54.6%，创新投入较高",
+        "费用结构相对集中，主要费用项目明确",
+        "数据来源: FY2024 Context ID映射"
+      ]
+    },
+    "asset_breakdown": {
+      "total_value": 14287.0,
+      "concentration_ratio": 1090.0958913697768,
+      "items": [
+        {
+          "name": "OtherAssetsNoncurrent",
+          "value": 74834.0,
+          "percentage": 523.790858822706
+        },
+        {
+          "name": "固定资产",
+          "value": 45680.0,
+          "percentage": 319.7312241898229
+        },
+        {
+          "name": "有价证券",
+          "value": 35228.0,
+          "percentage": 246.57380835724783
+        },
+        {
+          "name": "应收账款",
+          "value": 33410.0,
+          "percentage": 233.84895359417652
+        },
+        {
+          "name": "现金及等价物",
+          "value": 29943.0,
+          "percentage": 209.58213760761532
+        },
+        {
+          "name": "存货",
+          "value": 7286.0,
+          "percentage": 50.99741023307902
+        }
+      ],
+      "key_insights": [
+        "最大资产类别是OtherAssetsNoncurrent，占总资产的523.8%",
+        "流动性资产占456.2%，现金充裕",
+        "固定资产占比较高，属于资本密集型业务",
+        "数据来源: FY2024 Context ID映射"
+      ]
+    }
+  },
+  "efficiency_metrics": {
+    "conversion_analysis": {
+      "funnel_name": "Business Conversion Funnel FY2024",
+      "total_conversion_rate": 0,
+      "efficiency_score": 0,
+      "stages": [
+        [
+          "Revenue",
+          391035.0,
+          100.0
+        ],
+        [
+          "Operating Income",
+          123216.0,
+          31.510222870075566
+        ],
+        [
+          "Net Income",
+          93736.0,
+          23.971255769943866
+        ],
+        [
+          "Operating Cash Flow",
+          118254.0,
+          30.24128274962599
+        ]
+      ],
+      "bottlenecks": [],
+      "improvement_opportunities": [
+        "Operating Income表现优秀 (31.5%)",
+        "Operating Cash Flow表现优秀 (30.2%)"
+      ]
+    },
+    "margin_analysis": {
+      "period": "FY2024",
+      "margins": {
+        "gross_margin": {
+          "value": 46.206349815233935,
+          "unit": "%",
+          "performance_rating": "偏低",
+          "benchmark_value": 65.0,
+          "description": "Revenue minus cost of sales as percentage of revenue"
+        },
+        "operating_margin": {
+          "value": 31.510222870075566,
+          "unit": "%",
+          "performance_rating": "优秀",
+          "benchmark_value": 25.0,
+          "description": "Operating income as percentage of revenue"
+        },
+        "net_margin": {
+          "value": 23.971255769943866,
+          "unit": "%",
+          "performance_rating": "良好",
+          "benchmark_value": 20.0,
+          "description": "Net income as percentage of revenue"
+        },
+        "ebitda_margin": {
+          "value": 50.293196261204244,
+          "unit": "%",
+          "performance_rating": null,
+          "benchmark_value": null,
+          "description": "EBITDA as percentage of revenue"
+        },
+        "cash_margin": {
+          "value": 30.24128274962599,
+          "unit": "%",
+          "performance_rating": "优秀",
+          "benchmark_value": 25.0,
+          "description": "Operating cash flow as percentage of revenue"
+        }
+      }
+    },
+    "capital_efficiency": {
+      "period": "FY2024",
+      "capital_efficiency_score": 100,
+      "metrics": {
+        "roe": {
+          "value": 164.59350307287096,
+          "unit": "%",
+          "performance_rating": "优秀",
+          "description": "Net income as percentage of shareholders' equity"
+        },
+        "roa": {
+          "value": 656.092951634353,
+          "unit": "%",
+          "performance_rating": "优秀",
+          "description": "Net income as percentage of total assets"
+        },
+        "asset_turnover": {
+          "value": 27.369986701196893,
+          "unit": "x",
+          "performance_rating": "优秀",
+          "description": "Revenue divided by total assets"
+        },
+        "inventory_turnover": {
+          "value": 28.870710952511665,
+          "unit": "x",
+          "performance_rating": null,
+          "description": "Cost of sales divided by inventory"
+        },
+        "receivables_turnover": {
+          "value": 11.704130499850343,
+          "unit": "x",
+          "performance_rating": null,
+          "description": "Revenue divided by accounts receivable"
+        }
+      },
+      "key_insights": [
+        "股东权益回报率164.6%，",
+        "资产回报率656.1%，",
+        "资产周转率27.4倍，",
+        "数据来源: FY2024 Context ID映射"
+      ]
+    }
+  },
+  "financial_ratios": {
+    "fiscal_year": 2024,
+    "categories": {
+      "profitability": {
+        "gross_profit_margin": {
+          "value": 46.206349815233935,
+          "unit": "percent",
+          "description": "Measures the percentage of revenue retained after direct costs",
+          "data_quality": "unavailable",
+          "formula": "(Revenue - Cost of Sales) / Revenue"
+        },
+        "operating_profit_margin": {
+          "value": 31.510222870075566,
+          "unit": "percent",
+          "description": "Measures operating efficiency and pricing power",
+          "data_quality": "unavailable",
+          "formula": "Operating Income / Revenue"
+        },
+        "net_profit_margin": {
+          "value": 23.971255769943866,
+          "unit": "percent",
+          "description": "Overall profitability after all expenses",
+          "data_quality": "unavailable",
+          "formula": "Net Income / Revenue"
+        },
+        "return_on_assets": {
+          "value": 656.092951634353,
+          "unit": "percent",
+          "description": "Efficiency of asset utilization",
+          "data_quality": "unavailable",
+          "formula": "Net Income / Total Assets"
+        },
+        "return_on_equity": {
+          "value": 164.59350307287096,
+          "unit": "percent",
+          "description": "Return generated on shareholders' investment",
+          "data_quality": "unavailable",
+          "formula": "Net Income / Shareholders' Equity"
+        }
+      },
+      "liquidity": {
+        "current_ratio": {
+          "value": 0.18245555782590928,
+          "unit": "ratio",
+          "description": "Ability to pay short-term obligations",
+          "data_quality": "unavailable",
+          "formula": "Current Assets / Current Liabilities"
+        },
+        "quick_ratio": {
+          "value": 0.0894079485083776,
+          "unit": "ratio",
+          "description": "Liquidity excluding inventory",
+          "data_quality": "unavailable",
+          "formula": "(Current Assets - Inventory) / Current Liabilities"
+        },
+        "cash_ratio": {
+          "value": 0.3823942582754393,
+          "unit": "ratio",
+          "description": "Most conservative liquidity measure",
+          "data_quality": "unavailable",
+          "formula": "Cash and Cash Equivalents / Current Liabilities"
+        }
+      },
+      "leverage": {
+        "debt_to_equity": {
+          "value": 1.5057067603160668,
+          "unit": "ratio",
+          "description": "Financial leverage and capital structure",
+          "data_quality": "unavailable",
+          "formula": "Total Debt / Shareholders' Equity"
+        },
+        "debt_to_assets": {
+          "value": 600.1959823615874,
+          "unit": "percent",
+          "description": "Proportion of assets financed by debt",
+          "data_quality": "unavailable",
+          "formula": "Total Debt / Total Assets"
+        },
+        "interest_coverage": {
+          "value": null,
+          "unit": "ratio",
+          "description": "Ability to pay interest on debt",
+          "data_quality": "unavailable",
+          "formula": "Operating Income / Interest Expense"
+        }
+      },
+      "efficiency": {
+        "asset_turnover": {
+          "value": 27.369986701196893,
+          "unit": "ratio",
+          "description": "Efficiency of asset utilization",
+          "data_quality": "unavailable",
+          "formula": "Revenue / Total Assets"
+        },
+        "inventory_turnover": {
+          "value": 28.870710952511665,
+          "unit": "ratio",
+          "description": "Efficiency of inventory management",
+          "data_quality": "unavailable",
+          "formula": "Cost of Sales / Average Inventory"
+        },
+        "receivables_turnover": {
+          "value": 11.704130499850343,
+          "unit": "ratio",
+          "description": "Efficiency of receivables collection",
+          "data_quality": "unavailable",
+          "formula": "Revenue / Accounts Receivable"
+        }
+      },
+      "market": {
+        "earnings_per_share": {
+          "value": 0.006200788977233653,
+          "unit": "currency",
+          "description": "Earnings attributable to each share",
+          "data_quality": "unavailable",
+          "formula": "Net Income / Weighted Average Shares Outstanding"
+        },
+        "book_value_per_share": {
+          "value": 0.0037673351994266507,
+          "unit": "currency",
+          "description": "Book value attributable to each share",
+          "data_quality": "unavailable",
+          "formula": "Shareholders' Equity / Shares Outstanding"
+        }
+      }
+    },
+    "data_quality": {
+      "total_metrics": 16,
+      "good_quality": 0,
+      "estimated_quality": 0,
+      "unavailable": 16,
+      "quality_percentage": 0.0
+    },
+    "key_insights": [
+      "净利润率24.0%表现优秀",
+      "流动比率0.2流动性偏紧"
+    ]
+  },
+  "executive_summary": {
+    "generation_time": "2025-08-31T09:44:30.889201",
+    "key_points": [
+      "2024财年营业收入达到$391,035百万美元",
+      "同比增长2.0%，显示业务增长动力",
+      "净利润率24.0%，盈利能力优秀",
+      "营收复合增长率-0.4%，增长放缓",
+      "利润复合增长率-3.1%，盈利增长滞后",
+      "资本配置效率优秀，投资回报良好"
+    ],
+    "overall_assessment": "收入保持增长，盈利能力优秀，增长趋势需要关注。"
+  },
+  "report_metadata": {
+    "generation_time": "2025-08-31T09:44:30.889215",
+    "report_version": "1.0",
+    "data_source": "Apple Inc. 10-K Filing (2024-09-28)",
+    "analysis_tools": [
+      "funnel",
+      "trend",
+      "drill_down",
+      "efficiency",
+      "metrics",
+      "context_mapper"
+    ],
+    "context_mapping": {
+      "revenue_context_id": "c-1",
+      "balance_sheet_context_id": "c-21"
+    }
+  }
+}

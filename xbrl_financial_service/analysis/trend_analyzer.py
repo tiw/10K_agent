@@ -10,8 +10,9 @@ from dataclasses import dataclass
 from datetime import date, datetime
 import statistics
 
-from ..models import FilingData, FinancialFact
+from ..models import FilingData, FinancialFact, PeriodType
 from ..utils.logging import get_logger
+from ..utils.context_mapper import ContextMapper
 
 logger = get_logger(__name__)
 
@@ -89,6 +90,7 @@ class TrendAnalyzer:
     def __init__(self, filing_data: FilingData):
         self.filing_data = filing_data
         self.facts_by_concept = self._index_facts_by_concept_and_period()
+        self.context_mapper = ContextMapper(filing_data.all_facts)
     
     def _index_facts_by_concept_and_period(self) -> Dict[str, Dict[str, FinancialFact]]:
         """Index facts by concept and period for trend analysis"""
@@ -288,19 +290,58 @@ class TrendAnalyzer:
         return self._create_trend_analysis(data_points, metric_name, 'USD')
     
     def _get_time_series_data(self, concept: str) -> Dict[str, float]:
-        """Get time series data for a concept"""
+        """Get time series data for a concept with proper context filtering"""
         concept_data = self.facts_by_concept.get(concept, {})
         time_series = {}
         
         for period, fact in concept_data.items():
-            if isinstance(fact.value, (int, float)):
-                value = float(fact.value)
-                # Apply scaling if decimals are specified
-                if fact.decimals is not None:
-                    value *= (10 ** fact.decimals)
-                time_series[period] = value
+            # Validate that this is the right type of fact for the concept
+            if self._is_valid_fact_for_concept(fact, concept):
+                if isinstance(fact.value, (int, float)):
+                    value = float(fact.value)
+                    # Apply scaling if decimals are specified
+                    if fact.decimals is not None:
+                        value *= (10 ** fact.decimals)
+                    time_series[period] = value
         
         return time_series
+    
+    def _is_valid_fact_for_concept(self, fact: FinancialFact, concept: str) -> bool:
+        """Validate that a fact is appropriate for the given concept"""
+        # For revenue and income statement items, prefer duration periods
+        if any(keyword in concept.lower() for keyword in ['revenue', 'income', 'expense', 'cost', 'sales']):
+            return fact.period_type == PeriodType.DURATION
+        
+        # For balance sheet items, prefer instant periods
+        if any(keyword in concept.lower() for keyword in ['assets', 'liabilities', 'equity', 'cash', 'debt']):
+            return fact.period_type == PeriodType.INSTANT
+        
+        # For other concepts, accept both types
+        return True
+    
+    def get_revenue_for_fiscal_year(self, fiscal_year: int) -> Optional[float]:
+        """Get revenue for a specific fiscal year with proper context validation"""
+        revenue_concepts = [
+            'RevenueFromContractWithCustomerExcludingAssessedTax',
+            'Revenues'
+        ]
+        
+        for concept in revenue_concepts:
+            facts = self.facts_by_concept.get(concept, {})
+            
+            # Find facts for the specified fiscal year
+            for period, fact in facts.items():
+                if (fact.period_end and 
+                    fact.period_end.year == fiscal_year and 
+                    fact.period_type == PeriodType.DURATION):
+                    
+                    if isinstance(fact.value, (int, float)):
+                        value = float(fact.value)
+                        if fact.decimals is not None:
+                            value *= (10 ** fact.decimals)
+                        return value
+        
+        return None
     
     def _create_trend_analysis(self, data_points: List[TrendPoint], metric_name: str, unit: str) -> TrendAnalysis:
         """Create trend analysis from data points"""

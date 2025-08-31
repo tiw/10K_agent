@@ -67,9 +67,11 @@ class FinancialFact:
     def get_scaled_value(self) -> Union[float, str, int]:
         """Get value scaled according to decimals attribute"""
         if isinstance(self.value, (int, float, Decimal)) and self.decimals is not None:
-            # For XBRL, decimals=-3 means value is in thousands, so multiply by 1000
-            # Formula: value * (10 ** (-decimals))
-            return float(self.value) * (10 ** (-self.decimals))
+            # For XBRL, decimals=-6 means the value should be divided by 10^6 to get the actual value
+            # The stored value is already scaled up, so we need to scale it down
+            # For Apple: decimals=-6 means value is stored as actual_value * 10^6
+            # So to get actual value: stored_value / 10^6
+            return float(self.value) / (10 ** abs(self.decimals))
         return self.value
     
     def to_dict(self) -> Dict[str, Any]:

@@ -14,6 +14,7 @@ from decimal import Decimal
 from ..models import FilingData, FinancialFact, FinancialRatios
 from ..utils.logging import get_logger
 from ..utils.exceptions import DataValidationError
+from ..utils.context_mapper import ContextMapper
 
 logger = get_logger(__name__)
 
@@ -76,6 +77,7 @@ class MetricsCalculator:
     def __init__(self, filing_data: FilingData):
         self.filing_data = filing_data
         self.facts_by_concept = self._index_facts_by_concept()
+        self.context_mapper = ContextMapper(filing_data.all_facts)
         self.custom_metrics: Dict[str, MetricDefinition] = {}
         self._setup_standard_metrics()
     
@@ -443,7 +445,15 @@ class MetricsCalculator:
         return data
     
     def _get_concept_value(self, concept: str, period: Optional[str] = None) -> Optional[float]:
-        """Get the value for a financial concept"""
+        """Get the value for a financial concept using Context ID mapping"""
+        # If period is specified as a fiscal year, use context mapper
+        if period and period.isdigit():
+            fiscal_year = int(period)
+            # Determine if this is a revenue/income statement concept or balance sheet concept
+            prefer_duration = any(term in concept.lower() for term in ['revenue', 'income', 'expense', 'cost', 'sales', 'cash'])
+            return self.context_mapper.get_concept_value_for_year(concept, fiscal_year, prefer_duration)
+        
+        # Fallback to original method for backward compatibility
         facts = self.facts_by_concept.get(concept, [])
         if not facts:
             return None
@@ -466,6 +476,11 @@ class MetricsCalculator:
             return value
         
         return None
+    
+    def get_value_for_fiscal_year(self, concept: str, fiscal_year: int) -> Optional[float]:
+        """Get value for a concept using Context ID mapping for a specific fiscal year"""
+        prefer_duration = any(term in concept.lower() for term in ['revenue', 'income', 'expense', 'cost', 'sales', 'cash'])
+        return self.context_mapper.get_concept_value_for_year(concept, fiscal_year, prefer_duration)
     
     def _concept_to_key(self, concept: str) -> str:
         """Convert concept name to data dictionary key"""
@@ -526,4 +541,226 @@ class MetricsCalculator:
             # Update data quality counts
             summary['data_quality'][result.data_quality] += 1
         
-        return summary
+        return summary    
+
+    def calculate_all_metrics_by_year(self, fiscal_year: int) -> Dict[str, MetricResult]:
+        """
+        Calculate all available financial metrics for a specific fiscal year using Context ID mapping
+        
+        Args:
+            fiscal_year: Fiscal year to calculate metrics for
+            
+        Returns:
+            Dictionary of metric results
+        """
+        logger.info(f"Calculating all metrics for FY{fiscal_year}")
+        
+        # Get financial data using context mapping
+        data = self._get_financial_data_by_year(fiscal_year)
+        
+        results = {}
+        
+        # Calculate all custom metrics
+        for metric_name, metric_def in self.custom_metrics.items():
+            try:
+                value = metric_def.calculation_func(data)
+                
+                # Convert to percentage if needed
+                if metric_def.unit == "percent" and value is not None:
+                    value *= 100
+                
+                # Determine data quality
+                missing_concepts = []
+                for concept in metric_def.required_concepts:
+                    if concept not in data or data[concept] is None:
+                        missing_concepts.append(concept)
+                
+                data_quality = "good"
+                if missing_concepts:
+                    if len(missing_concepts) == len(metric_def.required_concepts):
+                        data_quality = "unavailable"
+                    else:
+                        data_quality = "estimated"
+                
+                results[metric_name] = MetricResult(
+                    name=metric_def.name,
+                    value=value,
+                    unit=metric_def.unit,
+                    category=metric_def.category,
+                    description=metric_def.description,
+                    formula=metric_def.formula,
+                    data_quality=data_quality,
+                    missing_data=missing_concepts
+                )
+                
+            except Exception as e:
+                logger.warning(f"Failed to calculate metric {metric_name}: {str(e)}")
+                results[metric_name] = MetricResult(
+                    name=metric_def.name,
+                    value=None,
+                    unit=metric_def.unit,
+                    category=metric_def.category,
+                    description=metric_def.description,
+                    formula=metric_def.formula,
+                    data_quality="unavailable",
+                    missing_data=metric_def.required_concepts
+                )
+        
+        logger.info(f"Calculated {len(results)} metrics for FY{fiscal_year}")
+        return results
+    
+    def calculate_metrics_by_category_and_year(self, category: str, fiscal_year: int) -> Dict[str, MetricResult]:
+        """
+        Calculate all metrics in a specific category for a specific fiscal year
+        
+        Args:
+            category: Category name ('profitability', 'liquidity', 'leverage', 'efficiency', 'market')
+            fiscal_year: Fiscal year to calculate metrics for
+            
+        Returns:
+            Dictionary of metric results for the category
+        """
+        all_metrics = self.calculate_all_metrics_by_year(fiscal_year)
+        return {name: result for name, result in all_metrics.items() if result.category == category}
+    
+    def calculate_trend_metrics_by_year(self, current_year: int, previous_year: int) -> Dict[str, TrendMetric]:
+        """
+        Calculate metrics with trend analysis between two fiscal years
+        
+        Args:
+            current_year: Current fiscal year
+            previous_year: Previous fiscal year for comparison
+            
+        Returns:
+            Dictionary of trend metrics
+        """
+        logger.info(f"Calculating trend metrics: FY{previous_year} vs FY{current_year}")
+        
+        current_metrics = self.calculate_all_metrics_by_year(current_year)
+        previous_metrics = self.calculate_all_metrics_by_year(previous_year)
+        
+        trend_metrics = {}
+        
+        for metric_name in current_metrics:
+            current_result = current_metrics[metric_name]
+            previous_result = previous_metrics.get(metric_name)
+            
+            trend_metric = TrendMetric(
+                current_value=current_result.value,
+                previous_value=previous_result.value if previous_result else None
+            )
+            
+            trend_metrics[metric_name] = trend_metric
+        
+        return trend_metrics
+    
+    def get_metrics_summary_by_year(self, fiscal_year: int) -> Dict[str, Any]:
+        """
+        Get a comprehensive summary of all calculated metrics for a specific fiscal year
+        
+        Args:
+            fiscal_year: Fiscal year to analyze
+            
+        Returns:
+            Dictionary with metrics organized by category and data quality summary
+        """
+        logger.info(f"Generating metrics summary for FY{fiscal_year}")
+        
+        all_metrics = self.calculate_all_metrics_by_year(fiscal_year)
+        
+        # Organize by category
+        categories = {}
+        for metric_name, result in all_metrics.items():
+            if result.category not in categories:
+                categories[result.category] = {}
+            categories[result.category][metric_name] = result
+        
+        # Calculate data quality statistics
+        total_metrics = len(all_metrics)
+        good_quality = len([r for r in all_metrics.values() if r.data_quality == "good"])
+        estimated_quality = len([r for r in all_metrics.values() if r.data_quality == "estimated"])
+        unavailable = len([r for r in all_metrics.values() if r.data_quality == "unavailable"])
+        
+        # Generate key insights
+        key_insights = []
+        
+        # Profitability insights
+        if 'profitability' in categories:
+            prof_metrics = categories['profitability']
+            if 'net_profit_margin' in prof_metrics and prof_metrics['net_profit_margin'].value:
+                margin = prof_metrics['net_profit_margin'].value
+                if margin > 20:
+                    key_insights.append(f"净利润率{margin:.1f}%表现优秀")
+                elif margin > 10:
+                    key_insights.append(f"净利润率{margin:.1f}%表现良好")
+                else:
+                    key_insights.append(f"净利润率{margin:.1f}%需要改善")
+        
+        # Liquidity insights
+        if 'liquidity' in categories:
+            liq_metrics = categories['liquidity']
+            if 'current_ratio' in liq_metrics and liq_metrics['current_ratio'].value:
+                ratio = liq_metrics['current_ratio'].value
+                if ratio > 2:
+                    key_insights.append(f"流动比率{ratio:.1f}显示流动性充足")
+                elif ratio > 1:
+                    key_insights.append(f"流动比率{ratio:.1f}流动性适中")
+                else:
+                    key_insights.append(f"流动比率{ratio:.1f}流动性偏紧")
+        
+        return {
+            'fiscal_year': fiscal_year,
+            'categories': categories,
+            'data_quality': {
+                'total_metrics': total_metrics,
+                'good_quality': good_quality,
+                'estimated_quality': estimated_quality,
+                'unavailable': unavailable,
+                'quality_percentage': (good_quality / total_metrics * 100) if total_metrics > 0 else 0
+            },
+            'key_insights': key_insights,
+            'data_source': f"FY{fiscal_year} Context ID映射"
+        }
+    
+    def _get_financial_data_by_year(self, fiscal_year: int) -> Dict[str, Optional[float]]:
+        """
+        Get comprehensive financial data for a specific fiscal year using Context ID mapping
+        
+        Args:
+            fiscal_year: Fiscal year to get data for
+            
+        Returns:
+            Dictionary with financial concept values
+        """
+        data = {}
+        
+        # Revenue concepts (duration context)
+        data['revenue'] = self.get_value_for_fiscal_year('RevenueFromContractWithCustomerExcludingAssessedTax', fiscal_year) or \
+                         self.get_value_for_fiscal_year('Revenues', fiscal_year)
+        
+        # Cost and expense concepts (duration context)
+        data['cost_of_sales'] = self.get_value_for_fiscal_year('CostOfGoodsAndServicesSold', fiscal_year) or \
+                               self.get_value_for_fiscal_year('CostOfRevenue', fiscal_year)
+        
+        # Income concepts (duration context)
+        data['operating_income'] = self.get_value_for_fiscal_year('OperatingIncomeLoss', fiscal_year)
+        data['net_income'] = self.get_value_for_fiscal_year('NetIncomeLoss', fiscal_year)
+        
+        # Balance sheet concepts (instant context)
+        data['total_assets'] = self.context_mapper.get_concept_value_for_year('Assets', fiscal_year, prefer_duration=False)
+        data['current_assets'] = self.context_mapper.get_concept_value_for_year('AssetsCurrent', fiscal_year, prefer_duration=False)
+        data['inventory'] = self.context_mapper.get_concept_value_for_year('InventoryNet', fiscal_year, prefer_duration=False)
+        data['receivables'] = self.context_mapper.get_concept_value_for_year('AccountsReceivableNetCurrent', fiscal_year, prefer_duration=False)
+        data['cash'] = self.context_mapper.get_concept_value_for_year('CashAndCashEquivalentsAtCarryingValue', fiscal_year, prefer_duration=False)
+        
+        data['current_liabilities'] = self.context_mapper.get_concept_value_for_year('LiabilitiesCurrent', fiscal_year, prefer_duration=False)
+        data['total_debt'] = self.context_mapper.get_concept_value_for_year('LongTermDebtNoncurrent', fiscal_year, prefer_duration=False) or \
+                            self.context_mapper.get_concept_value_for_year('LongTermDebt', fiscal_year, prefer_duration=False)
+        data['shareholders_equity'] = self.context_mapper.get_concept_value_for_year('StockholdersEquity', fiscal_year, prefer_duration=False)
+        
+        # Other concepts
+        data['interest_expense'] = self.get_value_for_fiscal_year('InterestExpense', fiscal_year)
+        data['shares_outstanding'] = self.context_mapper.get_concept_value_for_year('WeightedAverageNumberOfSharesOutstandingBasic', fiscal_year, prefer_duration=False) or \
+                                   self.context_mapper.get_concept_value_for_year('CommonStockSharesOutstanding', fiscal_year, prefer_duration=False)
+        
+        return data
