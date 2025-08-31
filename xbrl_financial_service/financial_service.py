@@ -13,10 +13,14 @@ from .models import (
 )
 from .statement_builders import StatementBuilderFactory
 from .database import DatabaseManager
+from .query_engine import QueryEngine, FinancialQuery, QueryResult, FilterBuilder
+from .search_engine import SearchEngine, SearchResponse
+from .cache_manager import CacheManager, cached, cache_key
 from .config import Config
 from .utils.logging import get_logger
 from .utils.exceptions import QueryError, DataValidationError
 from .analysis.metrics_calculator import MetricsCalculator, MetricResult, TrendMetric
+from .error_handler import error_handler, handle_errors, error_context
 
 logger = get_logger(__name__)
 
@@ -30,6 +34,11 @@ class FinancialService:
         self.config = config or Config()
         self.db_manager = DatabaseManager(self.config)
         self.filing_data = filing_data
+        
+        # Initialize query and search engines
+        self.cache_manager = CacheManager(self.config)
+        self.query_engine = QueryEngine(self.db_manager)
+        self.search_engine = SearchEngine(self.db_manager, self.query_engine)
         
         # Cache for computed ratios
         self._ratios_cache: Optional[FinancialRatios] = None
@@ -54,6 +63,7 @@ class FinancialService:
         except Exception as e:
             logger.warning(f"Failed to save filing data to database: {str(e)}")
     
+    @handle_errors(return_response=False)
     def get_income_statement(self, period: Optional[str] = None) -> Optional[FinancialStatement]:
         """
         Get income statement data
@@ -64,11 +74,31 @@ class FinancialService:
         Returns:
             FinancialStatement or None if not available
         """
-        if not self.filing_data:
-            raise QueryError("No filing data loaded")
-        
-        return self.filing_data.income_statement
+        with error_context({'operation': 'get_income_statement', 'period': period}):
+            if not self.filing_data:
+                raise QueryError(
+                    "No filing data loaded",
+                    query_type="income_statement",
+                    suggestions=[
+                        "Load filing data first using load_filing_data()",
+                        "Check if XBRL files were parsed successfully"
+                    ]
+                )
+            
+            if not self.filing_data.income_statement:
+                raise QueryError(
+                    "Income statement not available in filing data",
+                    query_type="income_statement",
+                    suggestions=[
+                        "Check if income statement data exists in XBRL files",
+                        "Verify XBRL parsing completed successfully",
+                        "Review data quality report for missing statements"
+                    ]
+                )
+            
+            return self.filing_data.income_statement
     
+    @handle_errors(return_response=False)
     def get_balance_sheet(self, period: Optional[str] = None) -> Optional[FinancialStatement]:
         """
         Get balance sheet data
@@ -79,10 +109,29 @@ class FinancialService:
         Returns:
             FinancialStatement or None if not available
         """
-        if not self.filing_data:
-            raise QueryError("No filing data loaded")
-        
-        return self.filing_data.balance_sheet
+        with error_context({'operation': 'get_balance_sheet', 'period': period}):
+            if not self.filing_data:
+                raise QueryError(
+                    "No filing data loaded",
+                    query_type="balance_sheet",
+                    suggestions=[
+                        "Load filing data first using load_filing_data()",
+                        "Check if XBRL files were parsed successfully"
+                    ]
+                )
+            
+            if not self.filing_data.balance_sheet:
+                raise QueryError(
+                    "Balance sheet not available in filing data",
+                    query_type="balance_sheet",
+                    suggestions=[
+                        "Check if balance sheet data exists in XBRL files",
+                        "Verify XBRL parsing completed successfully",
+                        "Review data quality report for missing statements"
+                    ]
+                )
+            
+            return self.filing_data.balance_sheet
     
     def get_cash_flow_statement(self, period: Optional[str] = None) -> Optional[FinancialStatement]:
         """
@@ -119,7 +168,7 @@ class FinancialService:
     
     def search_facts(self, query: str, limit: int = 50) -> List[FinancialFact]:
         """
-        Search for financial facts
+        Search for financial facts using the enhanced search engine
         
         Args:
             query: Search query (concept name or label pattern)
@@ -128,21 +177,131 @@ class FinancialService:
         Returns:
             List of matching FinancialFact objects
         """
-        if not self.filing_data:
-            raise QueryError("No filing data loaded")
+        # Use the search engine for enhanced search capabilities
+        search_response = self.search_engine.search(
+            query=query,
+            limit=limit,
+            include_fuzzy=True,
+            include_suggestions=False
+        )
         
-        query_lower = query.lower()
-        matching_facts = []
+        return [result.fact for result in search_response.results]
+    
+    def advanced_search(
+        self, 
+        query: str, 
+        statement_type: Optional[StatementType] = None,
+        cik: Optional[str] = None,
+        include_suggestions: bool = True
+    ) -> SearchResponse:
+        """
+        Perform advanced search with enhanced features
         
-        for fact in self.filing_data.all_facts:
-            if (query_lower in fact.concept.lower() or 
-                query_lower in fact.label.lower()):
-                matching_facts.append(fact)
-                
-                if len(matching_facts) >= limit:
-                    break
+        Args:
+            query: Search query
+            statement_type: Optional statement type filter
+            cik: Optional company filter
+            include_suggestions: Whether to include search suggestions
+            
+        Returns:
+            SearchResponse with results and metadata
+        """
+        return self.search_engine.search(
+            query=query,
+            statement_type=statement_type,
+            cik=cik,
+            include_suggestions=include_suggestions
+        )
+    
+    def query_facts(self, financial_query: FinancialQuery) -> QueryResult:
+        """
+        Execute a comprehensive financial data query
         
-        return matching_facts
+        Args:
+            financial_query: FinancialQuery specification
+            
+        Returns:
+            QueryResult with facts and metadata
+        """
+        # Generate cache key for the query
+        query_key = cache_key("query_facts", financial_query)
+        
+        # Try to get from cache
+        cached_result = self.cache_manager.get_query_result(query_key)
+        if cached_result:
+            return cached_result
+        
+        # Execute query
+        result = self.query_engine.execute_query(financial_query)
+        
+        # Cache the result
+        self.cache_manager.cache_query_result(query_key, result, ttl=3600)
+        
+        return result
+    
+    def get_facts_by_concept(self, concept: str, cik: Optional[str] = None) -> List[FinancialFact]:
+        """
+        Get facts for a specific concept with caching
+        
+        Args:
+            concept: Concept name
+            cik: Optional company filter
+            
+        Returns:
+            List of FinancialFact objects
+        """
+        cache_key_str = f"concept:{concept}:{cik or 'all'}"
+        
+        # Try cache first
+        cached_facts = self.cache_manager.get_facts(cache_key_str)
+        if cached_facts:
+            return cached_facts
+        
+        # Query from database
+        query = FinancialQuery(
+            concept_pattern=concept,
+            cik=cik,
+            limit=1000
+        )
+        
+        result = self.query_engine.execute_query(query)
+        
+        # Cache the results
+        self.cache_manager.cache_facts(cache_key_str, result.facts, ttl=7200)
+        
+        return result.facts
+    
+    def get_facts_by_period(self, period_end: date, cik: Optional[str] = None) -> List[FinancialFact]:
+        """
+        Get facts for a specific period with caching
+        
+        Args:
+            period_end: Period end date
+            cik: Optional company filter
+            
+        Returns:
+            List of FinancialFact objects
+        """
+        cache_key_str = f"period:{period_end.isoformat()}:{cik or 'all'}"
+        
+        # Try cache first
+        cached_facts = self.cache_manager.get_facts(cache_key_str)
+        if cached_facts:
+            return cached_facts
+        
+        # Query from database
+        query = FinancialQuery(
+            period_end=period_end,
+            cik=cik,
+            limit=10000
+        )
+        
+        result = self.query_engine.execute_query(query)
+        
+        # Cache the results
+        self.cache_manager.cache_facts(cache_key_str, result.facts, ttl=7200)
+        
+        return result.facts
     
     def get_company_info(self) -> Optional[CompanyInfo]:
         """
@@ -423,3 +582,174 @@ class FinancialService:
         self._metrics_calculator.add_custom_metric(metric_definition)
         # Clear cache since new metrics are available
         self._ratios_cache = None
+    
+    def get_available_concepts(self, pattern: Optional[str] = None, limit: int = 100) -> List[Dict[str, str]]:
+        """
+        Get available financial concepts
+        
+        Args:
+            pattern: Optional pattern to filter concepts
+            limit: Maximum results to return
+            
+        Returns:
+            List of concept information
+        """
+        return self.query_engine.search_concepts(pattern or "", limit)
+    
+    def get_available_periods(self, cik: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get available reporting periods
+        
+        Args:
+            cik: Optional company filter
+            
+        Returns:
+            List of period information
+        """
+        return self.query_engine.get_available_periods(cik)
+    
+    def suggest_concepts(self, partial_query: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Get concept suggestions based on partial input
+        
+        Args:
+            partial_query: Partial concept name or label
+            limit: Maximum suggestions to return
+            
+        Returns:
+            List of concept suggestions
+        """
+        suggestions = self.search_engine.suggest_concepts(partial_query, limit)
+        return [
+            {
+                'concept': s.concept,
+                'label': s.label,
+                'frequency': s.frequency,
+                'statement_types': s.statement_types,
+                'similarity_score': s.similarity_score
+            }
+            for s in suggestions
+        ]
+    
+    def find_related_concepts(self, concept: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Find concepts related to the given concept
+        
+        Args:
+            concept: Base concept to find relations for
+            limit: Maximum related concepts to return
+            
+        Returns:
+            List of related concept information
+        """
+        related = self.search_engine.find_related_concepts(concept, limit)
+        return [
+            {
+                'concept': r.concept,
+                'label': r.label,
+                'frequency': r.frequency,
+                'statement_types': r.statement_types,
+                'similarity_score': r.similarity_score
+            }
+            for r in related
+        ]
+    
+    def get_cache_statistics(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get comprehensive cache statistics
+        
+        Returns:
+            Dictionary with cache statistics
+        """
+        return self.cache_manager.get_cache_stats()
+    
+    def clear_cache(self, cache_type: Optional[str] = None) -> None:
+        """
+        Clear cache data
+        
+        Args:
+            cache_type: Optional specific cache type to clear ('query', 'fact', 'statement', 'filing')
+                       If None, clears all caches
+        """
+        if cache_type is None:
+            self.cache_manager.clear_all_caches()
+            self._ratios_cache = None
+        elif cache_type == 'ratios':
+            self._ratios_cache = None
+        else:
+            # Clear specific cache type through cache manager
+            if hasattr(self.cache_manager, f'{cache_type}_cache'):
+                getattr(self.cache_manager, f'{cache_type}_cache').clear()
+    
+    def invalidate_company_cache(self, cik: str) -> int:
+        """
+        Invalidate all cached data for a specific company
+        
+        Args:
+            cik: Company CIK
+            
+        Returns:
+            Number of cache entries invalidated
+        """
+        return self.cache_manager.invalidate_company_data(cik)
+    
+    def get_cached_financial_ratios(self) -> FinancialRatios:
+        """
+        Get financial ratios with caching
+        
+        Returns:
+            FinancialRatios object
+        """
+        cache_key_str = cache_key("financial_ratios", self.filing_data.company_info.cik if self.filing_data and self.filing_data.company_info else "unknown")
+        
+        # Try cache first
+        cached_ratios = self.cache_manager.get_query_result(cache_key_str)
+        if cached_ratios:
+            return cached_ratios
+        
+        # Calculate and cache
+        ratios = self.get_financial_ratios()
+        self.cache_manager.cache_query_result(cache_key_str, ratios, ttl=3600)
+        
+        return ratios
+    
+    def build_query_from_filters(
+        self,
+        concept_pattern: Optional[str] = None,
+        label_pattern: Optional[str] = None,
+        statement_types: Optional[List[StatementType]] = None,
+        period_start: Optional[date] = None,
+        period_end: Optional[date] = None,
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
+        units: Optional[List[str]] = None,
+        limit: Optional[int] = None
+    ) -> FinancialQuery:
+        """
+        Build a FinancialQuery from individual filter parameters
+        
+        Args:
+            concept_pattern: Pattern to match in concept names
+            label_pattern: Pattern to match in labels
+            statement_types: List of statement types to include
+            period_start: Start date filter
+            period_end: End date filter
+            min_value: Minimum value filter
+            max_value: Maximum value filter
+            units: List of units to include
+            limit: Maximum results to return
+            
+        Returns:
+            FinancialQuery object
+        """
+        return FinancialQuery(
+            concept_pattern=concept_pattern,
+            label_pattern=label_pattern,
+            statement_types=statement_types,
+            period_start=period_start,
+            period_end=period_end,
+            min_value=min_value,
+            max_value=max_value,
+            units=units,
+            limit=limit
+        )

@@ -20,6 +20,8 @@ from .parsers import SchemaParser, LinkbaseParser, InstanceParser
 from .config import Config
 from .utils.logging import get_logger
 from .utils.exceptions import XBRLParsingError, DataValidationError
+from .validators import XBRLValidator, DataValidator, CalculationValidator
+from .error_handler import error_handler, handle_errors, error_context
 
 logger = get_logger(__name__)
 
@@ -36,6 +38,11 @@ class XBRLParser:
         self.schema_parser = SchemaParser()
         self.linkbase_parser = LinkbaseParser()
         self.instance_parser = InstanceParser()
+        
+        # Initialize validators
+        self.xbrl_validator = XBRLValidator()
+        self.data_validator = DataValidator()
+        self.calculation_validator = CalculationValidator()
         
         # Progress tracking
         self.progress_callback: Optional[Callable[[str, float], None]] = None
@@ -85,7 +92,14 @@ class XBRLParser:
             # Validate required files
             self._validate_file_paths(file_paths)
             
-            self._update_progress("Starting XBRL parsing", 0.0)
+            # Validate XBRL files before parsing
+            self._update_progress("Validating XBRL files", 0.05)
+            validation_report = self.validate_xbrl_files(file_paths)
+            
+            if not validation_report['is_valid']:
+                logger.warning(f"XBRL validation found {validation_report['error_count']} errors")
+            
+            self._update_progress("Starting XBRL parsing", 0.1)
             
             # Parse files in parallel where possible
             if self.config.enable_parallel_processing:
@@ -382,26 +396,138 @@ class XBRLParser:
         # This would be enhanced with role-based filtering
         return self.linkbase_parser.presentations
     
+    @handle_errors(return_response=False, user_friendly=False)
     def _validate_filing_data(self, filing_data: FilingData):
-        """Validate parsed filing data"""
-        if not filing_data.all_facts:
-            raise DataValidationError("No facts found in filing")
-        
-        if not filing_data.company_info.name:
-            logger.warning("Company name not found")
-        
-        if not filing_data.period_end_date:
-            logger.warning("Period end date not found")
-        
-        # Validate calculation relationships if strict validation is enabled
-        if self.config.strict_validation:
-            self._validate_calculations(filing_data)
+        """Comprehensive validation of parsed filing data"""
+        with error_context({'operation': 'filing_data_validation'}):
+            # Basic data validation
+            if not filing_data.all_facts:
+                raise DataValidationError("No facts found in filing")
+            
+            if not filing_data.company_info.name:
+                logger.warning("Company name not found")
+            
+            if not filing_data.period_end_date:
+                logger.warning("Period end date not found")
+            
+            # Generate comprehensive data quality report
+            try:
+                quality_report = self.data_validator.generate_data_quality_report(filing_data)
+                
+                # Log quality metrics
+                logger.info(f"Data quality score: {quality_report['overall_score']:.2%}")
+                logger.info(f"Total facts: {quality_report['summary']['total_facts']}")
+                
+                if quality_report['summary']['warning_count'] > 0:
+                    logger.warning(f"Data quality warnings: {quality_report['summary']['warning_count']}")
+                
+                # Store quality report in filing data
+                filing_data.quality_report = quality_report
+                
+            except Exception as e:
+                logger.warning(f"Data quality validation failed: {e}")
+            
+            # Validate calculations if enabled
+            if self.config.strict_validation:
+                self._validate_calculations(filing_data)
     
+    @handle_errors(return_response=False, user_friendly=False)
     def _validate_calculations(self, filing_data: FilingData):
         """Validate calculation relationships against facts"""
-        # This would implement calculation validation logic
-        # For now, just log a message
-        logger.info("Calculation validation would be performed here")
+        with error_context({'operation': 'calculation_validation'}):
+            try:
+                # Validate calculations using the calculation validator
+                calc_report = self.calculation_validator.validate_calculations(filing_data)
+                
+                # Log calculation validation results
+                logger.info(f"Calculation accuracy: {calc_report['calculation_accuracy']:.2%}")
+                logger.info(f"Validated calculations: {calc_report['validated_calculations']}")
+                
+                if calc_report['failed_calculations'] > 0:
+                    logger.warning(f"Failed calculations: {calc_report['failed_calculations']}")
+                
+                # Store calculation report in filing data
+                filing_data.calculation_report = calc_report
+                
+                # Validate balance sheet equation
+                if filing_data.balance_sheet and filing_data.balance_sheet.facts:
+                    balance_report = self.calculation_validator.validate_balance_sheet_equation(
+                        filing_data.balance_sheet.facts
+                    )
+                    
+                    if not balance_report['is_balanced']:
+                        logger.warning("Balance sheet equation validation failed")
+                        if balance_report['difference_percentage']:
+                            logger.warning(f"Balance difference: {balance_report['difference_percentage']:.2%}")
+                
+            except Exception as e:
+                # Check if it's a calculation error from our validators
+                if 'CalculationError' in str(type(e)):
+                    logger.error(f"Calculation validation failed: {e}")
+                    if hasattr(self.config, 'fail_on_calculation_errors') and self.config.fail_on_calculation_errors:
+                        raise
+                else:
+                    logger.warning(f"Calculation validation error: {e}")
+            except Exception as e:
+                logger.warning(f"Calculation validation error: {e}")
+    
+    def validate_xbrl_files(self, file_paths: Dict[str, str]) -> Dict[str, Any]:
+        """
+        Validate XBRL files before parsing
+        
+        Args:
+            file_paths: Dictionary mapping file types to paths
+            
+        Returns:
+            Dict: Validation report
+            
+        Raises:
+            XBRLParsingError: If validation fails
+        """
+        with error_context({'operation': 'xbrl_file_validation', 'files': list(file_paths.keys())}):
+            # Validate file completeness
+            self.xbrl_validator.validate_filing_completeness(file_paths)
+            
+            validation_results = {}
+            
+            # Validate each file
+            for file_type, file_path in file_paths.items():
+                try:
+                    # Validate XML structure
+                    self.xbrl_validator.validate_xml_structure(file_path)
+                    
+                    # Validate XBRL namespaces
+                    self.xbrl_validator.validate_xbrl_namespaces(file_path)
+                    
+                    # Validate required elements
+                    self.xbrl_validator.validate_required_elements(file_path, file_type)
+                    
+                    # Validate data types for instance documents
+                    if file_type == 'instance':
+                        self.xbrl_validator.validate_data_types(file_path)
+                    
+                    validation_results[file_type] = {
+                        'status': 'valid',
+                        'file_path': file_path
+                    }
+                    
+                except (XBRLParsingError, DataValidationError) as e:
+                    validation_results[file_type] = {
+                        'status': 'invalid',
+                        'file_path': file_path,
+                        'error': str(e),
+                        'error_type': e.error_type
+                    }
+                    
+                    # Re-raise if it's a critical validation error
+                    if isinstance(e, XBRLParsingError):
+                        raise
+            
+            # Get overall validation report
+            validation_report = self.xbrl_validator.get_validation_report()
+            validation_report['file_results'] = validation_results
+            
+            return validation_report
     
     def parse_filing_from_directory(self, directory_path: str) -> FilingData:
         """

@@ -158,3 +158,27 @@ class MCPError(XBRLServiceError):
                 "Review MCP protocol compliance"
             ])
         )
+
+
+class CacheError(XBRLServiceError):
+    """Raised when cache operations fail"""
+    
+    def __init__(
+        self,
+        message: str,
+        cache_operation: str = "general",
+        **kwargs
+    ):
+        details = kwargs.get("details", {})
+        details["cache_operation"] = cache_operation
+        
+        super().__init__(
+            message,
+            error_type="cache_error",
+            details=details,
+            suggestions=kwargs.get("suggestions", [
+                "Check cache configuration",
+                "Verify cache storage availability",
+                "Review cache key format"
+            ])
+        )

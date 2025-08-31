@@ -251,6 +251,10 @@ class FilingData:
     all_facts: List[FinancialFact] = field(default_factory=list)
     taxonomy_elements: List[TaxonomyElement] = field(default_factory=list)
     
+    # Validation reports (added by validation system)
+    quality_report: Optional[Dict[str, Any]] = None
+    calculation_report: Optional[Dict[str, Any]] = None
+    
     def get_statement(self, statement_type: StatementType) -> Optional[FinancialStatement]:
         """Get a specific financial statement"""
         statement_map = {
